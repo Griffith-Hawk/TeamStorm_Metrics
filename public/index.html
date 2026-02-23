@@ -296,6 +296,7 @@
     .workitems-table th:nth-child(14), .workitems-table td:nth-child(14),
     .workitems-table th:nth-child(15), .workitems-table td:nth-child(15),
     .workitems-table th:nth-child(16), .workitems-table td:nth-child(16) { min-width: 48px; }
+    .workitems-table th:nth-child(17), .workitems-table td:nth-child(17) { min-width: 90px; }
     .workitems-table .wi-no-est { color: var(--text-muted); font-size: 0.85rem; }
     .wi-status-green { color: var(--success) !important; font-weight: 500; }
     .wi-status-blue { color: var(--accent) !important; }
@@ -908,7 +909,18 @@
           const cb = canPush
             ? '<input type="checkbox" class="wi-select-cb" data-workitem-id="' + escapeHtml(wid) + '" data-estimate-sec="' + (estimateSec != null ? Math.round(estimateSec) : '') + '"' + checked + '>'
             : '<span class="wi-no-est" title="' + (hasChildren ? 'Сумма подзадач' : 'Нет O/M/P') + '">—</span>';
-          const link = '<a href="https://storm.alabuga.space/' + workspace.workspaceId + '/workitems/' + wid + '" target="_blank" rel="noopener" class="storm-link">Открыть</a>';
+          const wsKey = (workspace.key || '').trim() || 'tasks';
+          const taskKey = (w.key || '').trim();
+          let stormUrl = 'https://storm.alabuga.space/' + workspace.workspaceId;
+          if (taskKey) {
+            if (sprint?.id) {
+              stormUrl = 'https://storm.alabuga.space/tasks/tasks/' + encodeURIComponent(wsKey) + '/sprints/' + encodeURIComponent(sprint.id) + '?view=Table&workItemKey=' + encodeURIComponent(taskKey);
+            } else if (folder?.id) {
+              stormUrl = 'https://storm.alabuga.space/tasks/tasks/' + encodeURIComponent(wsKey) + '/folders/' + encodeURIComponent(folder.id) + '?view=Table&workItemKey=' + encodeURIComponent(taskKey);
+            } else {
+              stormUrl = 'https://storm.alabuga.space/tasks/tasks/' + encodeURIComponent(wsKey) + '?workItemKey=' + encodeURIComponent(taskKey);
+            }
+          }
           const rowClass = depth > 0 ? 'wi-child' : (hasChildren ? 'wi-parent' : '');
           const statusName = (w.status?.name || '').toString();
           const statusNorm = statusName.toLowerCase().trim();
@@ -918,7 +930,7 @@
             : '';
           const indentPx = depth * 24;
           const keyCell = (depth > 0 ? '<span class="wi-child-marker">↳</span>' : '') + escapeHtml(w.key || '—') + (hasChildren ? '<span class="wi-parent-badge">Σ</span>' : '');
-          const nameCell = escapeHtml(w.name || 'Без названия');
+          const nameCell = '<a href="' + stormUrl + '" target="_blank" rel="noopener" class="storm-link">' + escapeHtml(w.name || 'Без названия') + '</a>';
           const areaCell = escapeHtml(getArea(w) || '—');
           return '<tr class="' + rowClass + '" data-workitem-id="' + escapeHtml(wid) + '" data-depth="' + depth + '">' +
             '<td class="wi-cb-col">' + cb + '</td>' +
@@ -936,7 +948,7 @@
             '<td class="workitem-time">' + estQAVal + '</td>' +
             '<td class="workitem-time wi-fact-qa-cell" data-workitem-id="' + escapeHtml(wid) + '">…</td>' +
             '<td class="workitem-time wi-handoff-cell" data-workitem-id="' + escapeHtml(wid) + '">…</td>' +
-            '<td>' + link + '</td>' +
+            '<td class="workitem-area">' + escapeHtml((getTestingBy(w)?.displayName) || '—') + '</td>' +
           '</tr>' + (w.children || []).map(c => renderRow(c, depth + 1, cr, bug)).join('');
         }
 
@@ -954,6 +966,21 @@
           if (!assigneeId || assigneeId === 'all' || assigneeId === '__all__') return nodes;
           const aid = assigneeId === '__unassigned__' ? null : assigneeId;
           const match = (w) => (w.assignee?.id || null) === aid;
+          const hasMatch = (w) => match(w) || (w.children || []).some(c => hasMatch(c));
+          const filterNode = (w) => {
+            const children = (w.children || []).map(filterNode).filter(Boolean);
+            return (match(w) || children.length > 0) ? Object.assign({}, w, { children }) : null;
+          };
+          return nodes.filter(hasMatch).map(filterNode).filter(Boolean);
+        }
+        function filterByTestingBy(nodes, testingById) {
+          if (!testingById || testingById === '__all__' || testingById === '') return nodes;
+          const tid = testingById === '__unassigned__' ? null : testingById;
+          const match = (w) => {
+            const tb = getTestingBy(w);
+            const wid = tb?.id || null;
+            return (tid === null && !wid) || (tid && wid === tid);
+          };
           const hasMatch = (w) => match(w) || (w.children || []).some(c => hasMatch(c));
           const filterNode = (w) => {
             const children = (w.children || []).map(filterNode).filter(Boolean);
@@ -1014,6 +1041,7 @@
               const v = factCache[wiId(w)];
               return (v && typeof v === 'object' ? v.handoffFact : 0) ?? 0;
             }
+            case 'testingBy': return (getTestingBy(w)?.displayName || '').toLowerCase();
             default: return '';
           }
         }
@@ -1030,10 +1058,11 @@
           sorted.forEach(n => { if (n.children?.length) sortTree(n.children, col, dir, cr, bug); });
           return sorted;
         }
-        function buildTableBody(cr, bug, searchQ, assigneeFilterId, areaFilterId, sortCol, sortDir) {
+        function buildTableBody(cr, bug, searchQ, assigneeFilterId, areaFilterId, testingByFilterId, sortCol, sortDir) {
           let filtered = filterBySearch(roots, searchQ);
           filtered = filterByAssignee(filtered, assigneeFilterId);
           filtered = filterByArea(filtered, areaFilterId);
+          filtered = filterByTestingBy(filtered, testingByFilterId);
           const sorted = sortCol ? sortTree(filtered, sortCol, sortDir || 'asc', cr, bug) : filtered;
           return sorted.map(r => renderRow(r, 0, cr, bug)).join('');
         }
@@ -1175,6 +1204,8 @@
         const factCache = {};
         const { names: assigneeNames, order: assigneeOrder } = getAssigneeSums(codeReviewPct, bugPotentialPct);
         const assigneeOptions = '<option value="__all__">Все ответственные</option>' + assigneeOrder.map(aid => '<option value="' + escapeHtml(aid) + '">' + escapeHtml(assigneeNames[aid]) + '</option>').join('');
+        const { names: testingByNames, order: testingByOrder } = getTestingByQASums(true, factCache);
+        const testingByOptions = '<option value="" selected>— Все ответств. QA</option>' + testingByOrder.filter(tid => tid && tid !== '__all__').map(tid => '<option value="' + escapeHtml(tid) + '">' + escapeHtml(testingByNames[tid]) + '</option>').join('');
         const areasInData = new Set();
         function collectAreas(w) { const a = getArea(w); if (a) areasInData.add(AREA_ORDER.includes(a) ? a : (AREA_ORDER.find(x => x.toLowerCase() === a.toLowerCase()) || a)); (w.children || []).forEach(collectAreas); }
         roots.forEach(collectAreas);
@@ -1182,7 +1213,8 @@
         const areaOptions = '<option value="__all__">Все области</option>' + areaOrdered.map(a => '<option value="' + escapeHtml(a) + '">' + escapeHtml(a) + '</option>').join('');
         const filtersHtml = '<label>Поиск: <input type="text" id="wi-search" class="filter-input" placeholder="По ключу, названию..."></label>' +
           '<label>Область: <select id="wi-area-filter" class="filter-select">' + areaOptions + '</select></label>' +
-          '<label>Ответственный: <select id="wi-assignee-filter" class="filter-select">' + assigneeOptions + '</select></label>';
+          '<label>Ответственный: <select id="wi-assignee-filter" class="filter-select">' + assigneeOptions + '</select></label>' +
+          '<label>Ответств. QA: <select id="wi-testingby-filter" class="filter-select">' + testingByOptions + '</select></label>';
         const pushBtnHtml = '<button type="button" id="push-to-storm-btn" class="push-btn" disabled title="Выберите задачи">Перенести в Storm</button>';
         function buildTotalSummaryHtml(cr, bug) {
           const { planAll, planNoAcc, factAll, factNoAcc } = getTotalSums(cr, bug, factCache);
@@ -1193,15 +1225,15 @@
             '</tbody></table></div></div>';
         }
         const html = items.length === 0 ? '<div class="empty">В релизе нет задач</div>' :
-          statsHtml +
           buildTotalSummaryHtml(codeReviewPct, bugPotentialPct) +
           buildAreaSummaryHtml(codeReviewPct, bugPotentialPct) +
           buildAssigneeSummaryHtml(codeReviewPct, bugPotentialPct) +
           buildTestingBySummaryHtml() +
+          statsHtml +
           '<div class="push-toolbar">' + filtersHtml + pushBtnHtml + '<span id="push-status" class="push-status"></span></div>' +
           '<div class="workitems-table-wrap"><div class="table-loader" id="table-loader">Загрузка оценок и расчётов…</div><table class="workitems-table">' +
-          '<thead><tr><th class="wi-cb-col"><input type="checkbox" id="select-all-cb" title="Выбрать все"></th><th class="sortable" data-sort="key">Ключ<span class="sort-ind"></span></th><th class="sortable" data-sort="name">Название<span class="sort-ind"></span></th><th class="sortable" data-sort="type">Тип<span class="sort-ind"></span></th><th class="sortable" data-sort="area">Область<span class="sort-ind"></span></th><th class="sortable" data-sort="status">Статус<span class="sort-ind"></span></th><th class="sortable" data-sort="assignee">Ответственный<span class="sort-ind"></span></th><th class="sortable" data-sort="o">O<span class="sort-ind"></span></th><th class="sortable" data-sort="m">М<span class="sort-ind"></span></th><th class="sortable" data-sort="p">P<span class="sort-ind"></span></th><th class="sortable" data-sort="estimate">Estimate<span class="sort-ind"></span></th><th class="sortable" data-sort="fact">Факт<span class="sort-ind"></span></th><th class="sortable" data-sort="estimateQA">Est. QA<span class="sort-ind"></span></th><th class="sortable" data-sort="factQA">Факт QA<span class="sort-ind"></span></th><th class="sortable" data-sort="handoffFact">Handoff факт<span class="sort-ind"></span></th><th></th></tr></thead>' +
-          '<tbody id="workitems-tbody">' + buildTableBody(codeReviewPct, bugPotentialPct, '', '__all__', '__all__', '', 'asc') + '</tbody></table></div>';
+          '<thead><tr><th class="wi-cb-col"><input type="checkbox" id="select-all-cb" title="Выбрать все"></th><th class="sortable" data-sort="key">Ключ<span class="sort-ind"></span></th><th class="sortable" data-sort="name">Название<span class="sort-ind"></span></th><th class="sortable" data-sort="type">Тип<span class="sort-ind"></span></th><th class="sortable" data-sort="area">Область<span class="sort-ind"></span></th><th class="sortable" data-sort="status">Статус<span class="sort-ind"></span></th><th class="sortable" data-sort="assignee">Ответственный<span class="sort-ind"></span></th><th class="sortable" data-sort="o">O<span class="sort-ind"></span></th><th class="sortable" data-sort="m">М<span class="sort-ind"></span></th><th class="sortable" data-sort="p">P<span class="sort-ind"></span></th><th class="sortable" data-sort="estimate">Estimate<span class="sort-ind"></span></th><th class="sortable" data-sort="fact">Факт<span class="sort-ind"></span></th><th class="sortable" data-sort="estimateQA">Est. QA<span class="sort-ind"></span></th><th class="sortable" data-sort="factQA">Факт QA<span class="sort-ind"></span></th><th class="sortable" data-sort="handoffFact">Handoff факт<span class="sort-ind"></span></th><th class="sortable" data-sort="testingBy">Ответств. QA<span class="sort-ind"></span></th></tr></thead>' +
+          '<tbody id="workitems-tbody">' + buildTableBody(codeReviewPct, bugPotentialPct, '', '__all__', '__all__', '__all__', '', 'asc') + '</tbody></table></div>';
 
         container.innerHTML = '<h2 style="margin-bottom:1rem;font-size:1.1rem;">' + title + '</h2>' + html;
 
@@ -1279,11 +1311,13 @@
         const wiSearchInput = container.querySelector('#wi-search');
         const wiAssigneeFilter = container.querySelector('#wi-assignee-filter');
         const wiAreaFilter = container.querySelector('#wi-area-filter');
+        const wiTestingByFilter = container.querySelector('#wi-testingby-filter');
         const tbody = container.querySelector('#workitems-tbody');
         const thead = container.querySelector('.workitems-table thead');
         let workitemSearchQ = '';
         let workitemAssigneeFilter = '__all__';
         let workitemAreaFilter = '__all__';
+        let workitemTestingByFilter = '__all__';
         let sortCol = '';
         let sortDir = 'asc';
         const pushBtn = container.querySelector('#push-to-storm-btn');
@@ -1503,7 +1537,7 @@
           if (!tbody) return;
           const cr = parseInt(crInput?.value || '0', 10) || 0;
           const bug = parseInt(bugInput?.value || '0', 10) || 0;
-          tbody.innerHTML = buildTableBody(cr, bug, workitemSearchQ, workitemAssigneeFilter, workitemAreaFilter, sortCol, sortDir);
+          tbody.innerHTML = buildTableBody(cr, bug, workitemSearchQ, workitemAssigneeFilter, workitemAreaFilter, workitemTestingByFilter, sortCol, sortDir);
           applyFactCache();
           refreshTotalSummary(cr, bug);
           refreshAreaSummary(cr, bug);
@@ -1561,6 +1595,13 @@
         if (wiAreaFilter && tbody) {
           wiAreaFilter.addEventListener('change', () => {
             workitemAreaFilter = wiAreaFilter.value || '__all__';
+            refreshTable();
+          });
+        }
+        if (wiTestingByFilter && tbody) {
+          wiTestingByFilter.addEventListener('change', () => {
+            const v = wiTestingByFilter.value;
+            workitemTestingByFilter = (v && v !== '__all__') ? v : '__all__';
             refreshTable();
           });
         }

@@ -91,7 +91,14 @@ function addWorkingTimeSegment(startDt, endDt) {
   return totalMs / 1000;
 }
 
-function calculateTimeInStatusMinutes(history, isTargetStatusFn) {
+/** QA-активности (testing, in assessment testing): считаем всё время 24/7 без окна 8–17 */
+function addFullDaySegment(startDt, endDt) {
+  if (endDt <= startDt) return 0;
+  return (endDt.getTime() - startDt.getTime()) / 1000;
+}
+
+function calculateTimeInStatusMinutes(history, isTargetStatusFn, segmentFn) {
+  const addSegment = segmentFn || addWorkingTimeSegment;
   const events = [];
   for (const e of history) {
     const nv = e?.data?.newValue;
@@ -118,15 +125,15 @@ function calculateTimeInStatusMinutes(history, isTargetStatusFn) {
   for (const [dt, status] of events) {
     if (dt <= periodStart) continue;
     if (dt > periodEnd) {
-      if (inTarget) totalSec += addWorkingTimeSegment(lastTs, periodEnd);
+      if (inTarget) totalSec += addSegment(lastTs, periodEnd);
       break;
     }
-    if (inTarget) totalSec += addWorkingTimeSegment(lastTs, dt);
+    if (inTarget) totalSec += addSegment(lastTs, dt);
     inTarget = isTargetStatusFn(status);
     lastTs = dt;
   }
   if (lastTs < periodEnd && inTarget) {
-    totalSec += addWorkingTimeSegment(lastTs, periodEnd);
+    totalSec += addSegment(lastTs, periodEnd);
   }
   return totalSec / 60;
 }
@@ -136,11 +143,11 @@ function calculateInProgressMinutes(history) {
 }
 
 function calculateTestingMinutes(history) {
-  return calculateTimeInStatusMinutes(history, isTestingStatus);
+  return calculateTimeInStatusMinutes(history, isTestingStatus, addFullDaySegment);
 }
 
 function calculateInAssessmentTestingMinutes(history) {
-  return calculateTimeInStatusMinutes(history, isInAssessmentTestingStatus);
+  return calculateTimeInStatusMinutes(history, isInAssessmentTestingStatus, addFullDaySegment);
 }
 
 async function fetchHistoryForWorkitem(workspaceId, workitemId, auth) {

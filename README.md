@@ -39,24 +39,27 @@
 - Количество задач
 - Количество багов
 
-## Запуск
+## Деплой на Render (бесплатно)
 
-### Вариант 1: Простой HTTP сервер (Python)
+1. Зарегистрируйтесь на [render.com](https://render.com), привяжите GitHub.
+2. New → Web Service → выберите репозиторий `storm_stat`.
+3. Render подхватит `render.yaml`. Добавьте секреты в Dashboard → Environment:
+   - `STORM_SESSION_TOKEN` — cookie session из браузера Storm
+   - `STORM_API_TOKEN` — API-токен из профиля Storm
+4. Deploy. Приложение будет доступно по `https://storm-stat.onrender.com` (или ваш поддомен).
+
+**Важно:** на бесплатном тарифе сервис «засыпает» после 15 минут без обращений; первый запрос после паузы может занимать ~30 сек.
+
+## Запуск локально
+
+### Вариант 1: Node.js
 ```bash
-cd "Obsidian Vault/work/pert_project"
-python3 -m http.server 8000
+npm install
+cp .env.example .env   # и заполните токены
+npm start
 ```
-Затем откройте в браузере: http://localhost:8000
+Откройте http://localhost:3000
 
-### Вариант 2: Простой HTTP сервер (Node.js)
-```bash
-cd "Obsidian Vault/work/pert_project"
-npx http-server -p 8000
-```
-Затем откройте в браузере: http://localhost:8000
-
-### Вариант 3: Live Server (VS Code)
-Установите расширение "Live Server" и откройте `index.html` через него.
 
 ## Формат времени
 
