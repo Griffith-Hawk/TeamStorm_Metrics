@@ -84,18 +84,20 @@ function computeReadyToTestPairs(history) {
     if (isReadyToTestOrDev(status)) {
       lastReadyAt = dt;
       lastReadyEvent = ev;
-    } else if (isTestingStatus(status) && lastReadyAt) {
-      const lagMs = dt.getTime() - lastReadyAt.getTime();
+    } else if (isTestingStatus(status)) {
+      const readyAt = lastReadyAt || (i > 0 ? events[i - 1][0] : dt);
+      const readyEvent = lastReadyAt ? lastReadyEvent : (i > 0 ? events[i - 1][2] : null);
+      const lagMs = Math.max(0, dt.getTime() - readyAt.getTime());
       const nextDt = i + 1 < events.length ? events[i + 1][0] : new Date(now);
       const testingMs = Math.max(0, nextDt.getTime() - dt.getTime());
       pairs.push({
-        readyAt: lastReadyAt.toISOString(),
+        readyAt: readyAt.toISOString(),
         takenAt: dt.toISOString(),
         lagMs,
         lagHours: Math.round(lagMs / 36e5 * 10) / 10,
         testingMs,
         testingHours: Math.round(testingMs / 36e5 * 10) / 10,
-        readyBy: getEventUserDisplayName(lastReadyEvent),
+        readyBy: getEventUserDisplayName(readyEvent),
         takenBy: getEventUserDisplayName(ev)
       });
       lastReadyAt = null;
