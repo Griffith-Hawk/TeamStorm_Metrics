@@ -333,6 +333,19 @@
     .summary-table .sum-diff { color: var(--accent); font-weight: 700; }
     .summary-total { padding: 1.25rem; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); max-width: 520px; }
     .summary-total .summary-table { margin-top: 0; }
+    .wi-history-link { font-size: 0.7rem; margin-left: 0.3rem; color: var(--text-muted); cursor: pointer; text-decoration: none; }
+    .wi-history-link:hover { color: var(--accent); text-decoration: underline; }
+    .history-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .history-modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); max-width: 90vw; max-height: 85vh; overflow: auto; padding: 1.5rem; }
+    .history-modal h3 { margin-bottom: 1rem; font-size: 1rem; }
+    .history-modal .close-btn { float: right; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.2rem; padding: 0 0.3rem; }
+    .history-modal .close-btn:hover { color: var(--text); }
+    .history-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .history-table th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); font-weight: 500; color: var(--text-muted); }
+    .history-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
+    .history-table tr:last-child td { border-bottom: none; }
+    .history-loading { color: var(--text-muted); padding: 2rem; }
+    .history-empty { color: var(--text-muted); padding: 1rem 0; font-size: 0.9rem; }
   </style>
 </head>
 <body>
@@ -929,7 +942,7 @@
             : ['handoff', 'in assessment testing', 'selected'].includes(statusNorm) ? 'wi-status-gray'
             : '';
           const indentPx = depth * 24;
-          const keyCell = (depth > 0 ? '<span class="wi-child-marker">↳</span>' : '') + escapeHtml(w.key || '—') + (hasChildren ? '<span class="wi-parent-badge">Σ</span>' : '');
+          const keyCell = (depth > 0 ? '<span class="wi-child-marker">↳</span>' : '') + escapeHtml(w.key || '—') + (hasChildren ? '<span class="wi-parent-badge">Σ</span>' : '') + '<a class="wi-history-link" data-workitem-id="' + escapeHtml(wid) + '" title="История: попала в тесты → взяли в тест">История</a>';
           const nameCell = '<a href="' + stormUrl + '" target="_blank" rel="noopener" class="storm-link">' + escapeHtml(w.name || 'Без названия') + '</a>';
           const areaCell = escapeHtml(getArea(w) || '—');
           return '<tr class="' + rowClass + '" data-workitem-id="' + escapeHtml(wid) + '" data-depth="' + depth + '">' +
@@ -1343,6 +1356,64 @@
             if (cb.checked) selectedWorkitemIds.add(id);
             else selectedWorkitemIds.delete(id);
             updatePushBtnState();
+          });
+          tbody.addEventListener('click', async (e) => {
+            const link = e.target.closest('.wi-history-link');
+            if (!link) return;
+            e.preventDefault();
+            const wid = link.dataset.workitemId;
+            const w = byId[wid];
+            const taskKey = w?.key || wid;
+            const taskName = w?.name || 'Задача';
+            let overlay = document.getElementById('history-modal-overlay');
+            if (!overlay) {
+              overlay = document.createElement('div');
+              overlay.id = 'history-modal-overlay';
+              overlay.className = 'history-modal-overlay';
+              overlay.innerHTML = '<div class="history-modal"><button class="close-btn" aria-label="Закрыть">×</button><h3 id="history-modal-title"></h3><div id="history-modal-body"></div></div>';
+              document.body.appendChild(overlay);
+              overlay.querySelector('.close-btn').onclick = () => overlay.remove();
+              overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+              overlay.querySelector('.history-modal').onclick = (ev) => ev.stopPropagation();
+            }
+            document.getElementById('history-modal-title').textContent = taskKey + ' — ' + taskName;
+            document.getElementById('history-modal-body').innerHTML = '<div class="history-loading">Загрузка истории…</div>';
+            overlay.style.display = 'flex';
+            try {
+              const res = await fetch('/api/workspaces/' + encodeURIComponent(workspace.workspaceId) + '/workitems/' + encodeURIComponent(wid) + '/history/ready-to-test');
+              const data = await res.json().catch(() => ({}));
+              const pairs = data.pairs || [];
+              if (pairs.length === 0) {
+                document.getElementById('history-modal-body').innerHTML = '<div class="history-empty">Нет пар «попала в тесты» → «взяли в тест»</div>';
+              } else {
+                const dayNames = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+                const fmtDate = (iso) => {
+                  const d = new Date(iso);
+                  const dow = dayNames[d.getDay()];
+                  const rest = d.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+                  return dow + ', ' + rest;
+                };
+                const fmtDuration = (pair, keyHours, keyMs) => {
+                  const h = pair[keyHours];
+                  const ms = pair[keyMs];
+                  if (h != null) {
+                    if (h >= 24) {
+                      const days = Math.floor(h / 24);
+                      const hr = Math.round((h % 24) * 10) / 10;
+                      return days + ' д ' + (hr ? hr + ' ч' : '');
+                    }
+                    return h + ' ч';
+                  }
+                  if (ms != null) return (Math.round(ms / 36e5 * 10) / 10) + ' ч';
+                  return '—';
+                };
+                document.getElementById('history-modal-body').innerHTML = '<table class="history-table"><thead><tr><th>Попала в тесты</th><th>Кто перевёл в тесты</th><th>Взяли в тест</th><th>Кто взял в тест</th><th>Лаг</th><th>Время теста</th></tr></thead><tbody>' +
+                  pairs.map(p => '<tr><td>' + escapeHtml(fmtDate(p.readyAt)) + '</td><td>' + escapeHtml(p.readyBy || '—') + '</td><td>' + escapeHtml(fmtDate(p.takenAt)) + '</td><td>' + escapeHtml(p.takenBy || '—') + '</td><td>' + escapeHtml(fmtDuration(p, 'lagHours', 'lagMs')) + '</td><td>' + escapeHtml(fmtDuration(p, 'testingHours', 'testingMs')) + '</td></tr>').join('') +
+                  '</tbody></table>';
+              }
+            } catch (err) {
+              document.getElementById('history-modal-body').innerHTML = '<div class="history-empty" style="color:var(--accent)">Ошибка загрузки: ' + escapeHtml(String(err.message)) + '</div>';
+            }
           });
         }
 

@@ -43,6 +43,68 @@ function isInAssessmentTestingStatus(status) {
   return norm === 'in assessment testing';
 }
 
+/** ready to test или dev (включая dev waiting) — попала в тесты */
+function isReadyToTestOrDev(status) {
+  const norm = normalizeStatusForInProgress(status);
+  return norm === 'ready to test' || norm === 'dev' || norm === 'dev waiting';
+}
+
+/** Из события истории извлекаем displayName того, кто сделал смену статуса. */
+function getEventUserDisplayName(e) {
+  const u = e?.user ?? e?.author ?? e?.createdBy ?? e?.updatedBy ?? e?.data?.user ?? e?.data?.author;
+  if (u && typeof u === 'object' && u.displayName) return u.displayName;
+  if (u && typeof u === 'object' && u.name) return u.name;
+  if (typeof u === 'string') return u;
+  const id = e?.userId ?? e?.authorId ?? e?.data?.userId;
+  if (id) return id;
+  return null;
+}
+
+/** Пары (попала в тесты, взяли в тест, лаг). История: дата и статус при смене. */
+function computeReadyToTestPairs(history) {
+  const events = [];
+  for (const e of history) {
+    const t = (e.type || '').toLowerCase();
+    if (t !== 'statusupdated' && t !== 'workitemstatusupdated') continue;
+    const nv = e?.data?.newValue;
+    const raw = (nv?.statusName ?? nv?.name ?? (typeof nv === 'string' ? nv : '')) || '';
+    const newStatus = raw ? normalizeStatusForInProgress(raw) || raw : '';
+    if (!e.date || !newStatus) continue;
+    events.push([new Date(e.date), newStatus, e]);
+  }
+  if (!events.length) return [];
+  events.sort((a, b) => a[0].getTime() - b[0].getTime());
+
+  const pairs = [];
+  let lastReadyAt = null;
+  let lastReadyEvent = null;
+  const now = Date.now();
+  for (let i = 0; i < events.length; i++) {
+    const [dt, status, ev] = events[i];
+    if (isReadyToTestOrDev(status)) {
+      lastReadyAt = dt;
+      lastReadyEvent = ev;
+    } else if (isTestingStatus(status) && lastReadyAt) {
+      const lagMs = dt.getTime() - lastReadyAt.getTime();
+      const nextDt = i + 1 < events.length ? events[i + 1][0] : new Date(now);
+      const testingMs = Math.max(0, nextDt.getTime() - dt.getTime());
+      pairs.push({
+        readyAt: lastReadyAt.toISOString(),
+        takenAt: dt.toISOString(),
+        lagMs,
+        lagHours: Math.round(lagMs / 36e5 * 10) / 10,
+        testingMs,
+        testingHours: Math.round(testingMs / 36e5 * 10) / 10,
+        readyBy: getEventUserDisplayName(lastReadyEvent),
+        takenBy: getEventUserDisplayName(ev)
+      });
+      lastReadyAt = null;
+      lastReadyEvent = null;
+    }
+  }
+  return pairs;
+}
+
 function moscowWeekday(d) {
   return new Date(d.getTime() + MOSCOW_OFFSET_MS).getUTCDay();
 }
@@ -298,6 +360,39 @@ app.post('/api/workspaces/:workspaceId/workitems/fact', async (req, res) => {
 
   await runWithConcurrency(tasks, 8);
   res.json(results);
+});
+
+// GET workitems/:id/history/ready-to-test — пары (попала в тесты, взяли в тест, лаг)
+app.get('/api/workspaces/:workspaceId/workitems/:workitemId/history/ready-to-test', async (req, res) => {
+  const sessionToken = process.env.STORM_SESSION_TOKEN;
+  const apiToken = (process.env.STORM_API_TOKEN || '').trim();
+  const { workspaceId, workitemId } = req.params;
+  const auth = sessionToken
+    ? { headers: { 'Cookie': `session=${sessionToken}` } }
+    : apiToken
+      ? { headers: { 'Authorization': `PrivateToken ${apiToken}` } }
+      : null;
+  if (!auth) {
+    return res.status(500).json({
+      error: 'STORM_SESSION_TOKEN or STORM_API_TOKEN required',
+      hint: 'History API требует сессию'
+    });
+  }
+  try {
+    const history = await fetchHistoryForWorkitem(workspaceId, workitemId, auth);
+    if (!history) {
+      return res.json({ pairs: [] });
+    }
+    const filtered = history.filter((e) => {
+      const t = (e.type || '').toLowerCase();
+      return t === 'statusupdated' || t === 'workitemstatusupdated';
+    });
+    const pairs = computeReadyToTestPairs(filtered);
+    res.json({ pairs });
+  } catch (err) {
+    console.error('History ready-to-test failed:', err.message);
+    res.status(502).json({ error: 'Failed to fetch history', details: err.message });
+  }
 });
 
 app.get('/api/workspaces/:workspaceId/folders/:folderId/workitems', async (req, res) => {
