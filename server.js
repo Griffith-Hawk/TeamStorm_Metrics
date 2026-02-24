@@ -82,6 +82,9 @@ function computeReadyToTestPairs(history) {
   for (let i = 0; i < events.length; i++) {
     const [dt, status, ev] = events[i];
     if (isReadyToTestOrDev(status)) {
+      if (lastReadyAt) {
+        pairs.push({ readyAt: lastReadyAt.toISOString(), readyBy: getEventUserDisplayName(lastReadyEvent), takenAt: null, takenBy: null, lagMs: null, lagHours: null, testingMs: null, testingHours: null });
+      }
       lastReadyAt = dt;
       lastReadyEvent = ev;
     } else if (isTestingStatus(status)) {
@@ -102,7 +105,16 @@ function computeReadyToTestPairs(history) {
       });
       lastReadyAt = null;
       lastReadyEvent = null;
+    } else {
+      if (lastReadyAt) {
+        pairs.push({ readyAt: lastReadyAt.toISOString(), readyBy: getEventUserDisplayName(lastReadyEvent), takenAt: null, takenBy: null, lagMs: null, lagHours: null, testingMs: null, testingHours: null });
+        lastReadyAt = null;
+        lastReadyEvent = null;
+      }
     }
+  }
+  if (lastReadyAt) {
+    pairs.push({ readyAt: lastReadyAt.toISOString(), readyBy: getEventUserDisplayName(lastReadyEvent), takenAt: null, takenBy: null, lagMs: null, lagHours: null, testingMs: null, testingHours: null });
   }
   return pairs;
 }
