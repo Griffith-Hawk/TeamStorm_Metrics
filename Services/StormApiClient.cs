@@ -16,12 +16,17 @@ public sealed class StormApiClient : IStormApiClient
     {
         _httpClient = httpClient;
         _options = options.Value;
-        _httpClient.BaseAddress = new Uri(_options.BaseUrl.TrimEnd('/') + "/");
+
+        _httpClient.BaseAddress =
+            new Uri(_options.BaseUrl.TrimEnd('/') + "/");
     }
 
     public async Task<IReadOnlyList<WorkspaceDto>> GetWorkspacesAsync(CancellationToken cancellationToken)
     {
-        var request = BuildRequest(HttpMethod.Post, "cwm/rtc-service/com.ibm.team.process.internal.service.web.IProcessWebUIService/workspaces");
+        //var request = BuildRequest(HttpMethod.Post, "cwm/rtc-service/com.ibm.team.process.internal.service.web.IProcessWebUIService/workspaces");
+        var request = BuildRequest(
+    HttpMethod.Post,
+    "admin/api/v1/workspaces/get");
         var response = await _httpClient.SendAsync(request, cancellationToken);
         return await ReadAsListAsync<WorkspaceDto>(response, cancellationToken);
     }
@@ -53,33 +58,68 @@ public sealed class StormApiClient : IStormApiClient
     {
         var request = new HttpRequestMessage(method, relativeUrl);
 
-        if (!string.IsNullOrWhiteSpace(_options.ApiToken))
-        {
-            request.Headers.Authorization = new AuthenticationHeaderValue("PrivateToken", _options.ApiToken);
-        }
-        else if (!string.IsNullOrWhiteSpace(_options.SessionToken))
+        if (!string.IsNullOrWhiteSpace(_options.SessionToken))
         {
             request.Headers.Add("Cookie", $"session={_options.SessionToken}");
         }
 
         if (method == HttpMethod.Post)
         {
-            request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+            request.Content = new StringContent(
+                "{}",
+                Encoding.UTF8,
+                "application/json"
+            );
         }
 
         return request;
     }
 
-    private static async Task<IReadOnlyList<T>> ReadAsListAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<T>> ReadAsListAsync<T>(
+    HttpResponseMessage response,
+    CancellationToken cancellationToken)
     {
         var text = await response.Content.ReadAsStringAsync(cancellationToken);
+
         if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(
+                $"Storm API error {(int)response.StatusCode}: {text}");
+
+        var options = new JsonSerializerOptions
         {
-            throw new InvalidOperationException($"Storm API error {(int)response.StatusCode}: {text}");
+            PropertyNameCaseInsensitive = true
+        };
+
+        using var document = JsonDocument.Parse(text);
+
+        var root = document.RootElement;
+
+        // Если пришёл массив напрямую
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            return JsonSerializer.Deserialize<List<T>>(text, options) ?? [];
         }
 
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var data = JsonSerializer.Deserialize<List<T>>(text, options);
-        return data ?? [];
+        // Если пришёл объект
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+            // ищем первый массив внутри объекта
+            foreach (var property in root.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.Array)
+                {
+                    return JsonSerializer.Deserialize<List<T>>(
+                        property.Value.GetRawText(),
+                        options) ?? [];
+                }
+            }
+
+            // если массивов нет — значит это одиночный объект
+            var single = JsonSerializer.Deserialize<T>(text, options);
+            if (single != null)
+                return [single];
+        }
+
+        return [];
     }
 }
