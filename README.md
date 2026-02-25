@@ -1,99 +1,41 @@
-# Иерархия задач релиза
+# TeamStorm Metrics (.NET)
 
-Веб-приложение для отображения иерархической структуры задач из JSON файла.
+Проект перенесён на **ASP.NET Core MVC (C#)** с сохранением основного функционала прошлого приложения:
+- выгрузка Workspace,
+- переход на отдельную страницу проекта,
+- выбор папки/спринта,
+- таблица задач,
+- расчёт метрик `Fact`, `Fact QA`, `Handoff QA`,
+- просмотр истории пары `ready to test -> testing`.
 
-## Структура проекта
+## Структура
+- `Controllers/` — web/API контроллеры.
+- `Services/` — интеграция со Storm API и бизнес-логика метрик.
+- `Models/` — request/response модели.
+- `Views/` + `wwwroot/` — HTML/CSS/JS.
+- `Options/` — конфигурация токенов и base url.
 
-- `example.json` - исходный JSON файл с данными задач
-- `index.html` - главная страница с иерархическим деревом задач
-
-## Функциональность
-
-### Отображение данных
-Для каждой задачи отображается:
-- **Ключ** (например, KS-801)
-- **Название**
-- **Тип** (Feature, Задача, Bug)
-- **Статус** (ACCEPTANCE, IN_PROGRESS и т.д.)
-- **Окружение** (из атрибутов)
-- **Ответственный** (assignee)
-- **O, M, P** (время из атрибутов)
-- **Estimate** (оценка времени)
-- **Spent** (затраченное время, если есть)
-- **Left** (оставшееся время, если есть)
-
-### Иерархия
-- Фичи верхнего уровня (level 1)
-- Подзадачи и задачи (level 2+)
-- Автоматическое построение дерева по `parentId`
-
-### Интерактивность
-- Раскрытие/сворачивание узлов дерева
-- По умолчанию раскрыт первый уровень
-- Клик по узлу или иконке для раскрытия/сворачивания
-
-### Статистика
-В верхней части страницы отображается:
-- Общее количество элементов
-- Количество фич
-- Количество задач
-- Количество багов
-
-## Деплой на Render (бесплатно)
-
-1. Зарегистрируйтесь на [render.com](https://render.com), привяжите GitHub.
-2. New → Web Service → выберите репозиторий `storm_stat`.
-3. Render подхватит `render.yaml`. Добавьте секреты в Dashboard → Environment:
-   - `STORM_SESSION_TOKEN` — cookie session из браузера Storm
-   - `STORM_API_TOKEN` — API-токен из профиля Storm
-4. Deploy. Приложение будет доступно по `https://storm-stat.onrender.com` (или ваш поддомен).
-
-**Важно:** на бесплатном тарифе сервис «засыпает» после 15 минут без обращений; первый запрос после паузы может занимать ~30 сек.
-
-## Запуск локально
-
-### Вариант 1: Node.js
-```bash
-npm install
-cp .env.example .env   # и заполните токены
-npm start
-```
-Откройте http://localhost:3000
-
-
-## Формат времени
-
-Время отображается в формате:
-- Часы и минуты (например, "8ч 30м")
-- Только минуты для значений меньше часа (например, "45м")
-- "—" для пустых значений
-
-Все значения времени в JSON хранятся в секундах и автоматически конвертируются для отображения.
-
-## Структура данных
-
-Приложение ожидает JSON файл со следующей структурой:
+## Конфигурация
+`appsettings.json`:
 ```json
-{
-  "items": [
-    {
-      "workitemId": "...",
-      "parentId": "...",
-      "key": "KS-801",
-      "name": "Название задачи",
-      "workitemType": { "name": "Feature" },
-      "status": { "statusName": "ACCEPTANCE" },
-      "assignee": { "displayName": "Имя" },
-      "attributes": [
-        { "name": "O", "type": "TimeDuration", "data": { "value": 28800 } },
-        { "name": "М", "type": "TimeDuration", "data": { "value": 14400 } },
-        { "name": "P", "type": "TimeDuration", "data": { "value": 7200 } },
-        { "name": "Окружение", "type": "UniSelect", "data": { "value": { "name": "РФ" } } }
-      ],
-      "estimatedTime": 28800,
-      "spentTime": 14400,
-      "leftTime": 14400
-    }
-  ]
+"Storm": {
+  "BaseUrl": "https://storm.alabuga.space",
+  "ApiToken": "...",
+  "SessionToken": "..."
 }
 ```
+
+## Запуск
+```bash
+dotnet restore
+dotnet run
+```
+
+## Основные API
+- `GET /api/workspaces`
+- `GET /api/workspaces/{workspaceId}/folders`
+- `GET /api/workspaces/{workspaceId}/sprints?folderId=...`
+- `GET /api/workspaces/{workspaceId}/folders/{folderId}/workitems`
+- `POST /api/workspaces/{workspaceId}/workitems/fact`
+- `GET /api/workspaces/{workspaceId}/workitems/{workitemId}/history/ready-to-test`
+- `PATCH|PUT /api/workspaces/{workspaceId}/workitems/{workitemId}`
