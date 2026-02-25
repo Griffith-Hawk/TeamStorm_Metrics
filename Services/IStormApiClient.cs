@@ -1,11 +1,10 @@
-using TeamStorm.Metrics.Models;
+using System.Text.Json;
 
 namespace TeamStorm.Metrics.Services;
 
 public interface IStormApiClient
 {
-    Task<IReadOnlyList<WorkspaceDto>> GetWorkspacesAsync(CancellationToken cancellationToken);
-    Task<IReadOnlyList<FolderDto>> GetFoldersAsync(string workspaceId, CancellationToken cancellationToken);
-    Task<IReadOnlyList<WorkItemDto>> GetWorkItemsAsync(string workspaceId, string folderId, CancellationToken cancellationToken);
-    Task<IReadOnlyList<HistoryEventDto>> GetWorkItemHistoryAsync(string workspaceId, string workItemId, CancellationToken cancellationToken);
+    Task<JsonElement> PostAsync(string relativePath, object? payload, CancellationToken cancellationToken);
+    Task<JsonElement> GetAsync(string relativePath, CancellationToken cancellationToken);
+    Task<JsonElement> SendWorkItemUpdateAsync(string workspaceId, string workitemId, int originalEstimateSeconds, string? folderId, CancellationToken cancellationToken);
 }

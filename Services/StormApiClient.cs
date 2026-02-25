@@ -2,7 +2,6 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
-using TeamStorm.Metrics.Models;
 using TeamStorm.Metrics.Options;
 
 namespace TeamStorm.Metrics.Services;
@@ -16,70 +15,92 @@ public sealed class StormApiClient : IStormApiClient
     {
         _httpClient = httpClient;
         _options = options.Value;
-        _httpClient.BaseAddress = new Uri(_options.BaseUrl.TrimEnd('/') + "/");
+        _httpClient.BaseAddress = new Uri(_options.BaseUrl.TrimEnd('/') + '/');
     }
 
-    public async Task<IReadOnlyList<WorkspaceDto>> GetWorkspacesAsync(CancellationToken cancellationToken)
-    {
-        var request = BuildRequest(HttpMethod.Post, "cwm/rtc-service/com.ibm.team.process.internal.service.web.IProcessWebUIService/workspaces");
-        var response = await _httpClient.SendAsync(request, cancellationToken);
-        return await ReadAsListAsync<WorkspaceDto>(response, cancellationToken);
-    }
+    public Task<JsonElement> PostAsync(string relativePath, object? payload, CancellationToken cancellationToken)
+        => SendAsync(HttpMethod.Post, relativePath, payload, cancellationToken);
 
-    public async Task<IReadOnlyList<FolderDto>> GetFoldersAsync(string workspaceId, CancellationToken cancellationToken)
-    {
-        var request = BuildRequest(HttpMethod.Get, $"cwm/public/api/v1/workspaces/{Uri.EscapeDataString(workspaceId)}/folders");
-        var response = await _httpClient.SendAsync(request, cancellationToken);
-        return await ReadAsListAsync<FolderDto>(response, cancellationToken);
-    }
+    public Task<JsonElement> GetAsync(string relativePath, CancellationToken cancellationToken)
+        => SendAsync(HttpMethod.Get, relativePath, null, cancellationToken);
 
-    public async Task<IReadOnlyList<WorkItemDto>> GetWorkItemsAsync(string workspaceId, string folderId, CancellationToken cancellationToken)
+    public async Task<JsonElement> SendWorkItemUpdateAsync(string workspaceId, string workitemId, int originalEstimateSeconds, string? folderId, CancellationToken cancellationToken)
     {
-        var url = $"cwm/public/api/v1/workspaces/{Uri.EscapeDataString(workspaceId)}/folders/{Uri.EscapeDataString(folderId)}/workItems?maxItemsCount=100";
-        var request = BuildRequest(HttpMethod.Get, url);
-        var response = await _httpClient.SendAsync(request, cancellationToken);
-        return await ReadAsListAsync<WorkItemDto>(response, cancellationToken);
-    }
+        var payload = new { originalEstimate = originalEstimateSeconds };
+        var basePath = "cwm/public/api/v1";
 
-    public async Task<IReadOnlyList<HistoryEventDto>> GetWorkItemHistoryAsync(string workspaceId, string workItemId, CancellationToken cancellationToken)
-    {
-        var url = $"history/api/v1/workspaces/{Uri.EscapeDataString(workspaceId)}/workItems/{Uri.EscapeDataString(workItemId)}/history";
-        var request = BuildRequest(HttpMethod.Get, url);
-        var response = await _httpClient.SendAsync(request, cancellationToken);
-        return await ReadAsListAsync<HistoryEventDto>(response, cancellationToken);
-    }
-
-    private HttpRequestMessage BuildRequest(HttpMethod method, string relativeUrl)
-    {
-        var request = new HttpRequestMessage(method, relativeUrl);
-
-        if (!string.IsNullOrWhiteSpace(_options.ApiToken))
+        var urls = new List<string>
         {
-            request.Headers.Authorization = new AuthenticationHeaderValue("PrivateToken", _options.ApiToken);
-        }
-        else if (!string.IsNullOrWhiteSpace(_options.SessionToken))
+            $"{basePath}/workspaces/{Uri.EscapeDataString(workspaceId)}/workitems/{Uri.EscapeDataString(workitemId)}",
+            $"{basePath}/workspaces/{Uri.EscapeDataString(workspaceId)}/nodes/{Uri.EscapeDataString(workitemId)}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(folderId))
         {
-            request.Headers.Add("Cookie", $"session={_options.SessionToken}");
+            urls.Insert(0, $"{basePath}/workspaces/{Uri.EscapeDataString(workspaceId)}/folders/{Uri.EscapeDataString(folderId)}/workitems/{Uri.EscapeDataString(workitemId)}");
         }
 
-        if (method == HttpMethod.Post)
+        Exception? last = null;
+        foreach (var url in urls)
         {
-            request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+            foreach (var method in new[] { HttpMethod.Patch, HttpMethod.Put })
+            {
+                try
+                {
+                    return await SendAsync(method, url, payload, cancellationToken);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    last = ex;
+                    if (!ex.Message.Contains("404")) break;
+                }
+            }
         }
 
-        return request;
+        throw last ?? new InvalidOperationException("Storm workitem update failed");
     }
 
-    private static async Task<IReadOnlyList<T>> ReadAsListAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
+    private async Task<JsonElement> SendAsync(HttpMethod method, string relativePath, object? payload, CancellationToken cancellationToken)
     {
+        using var request = new HttpRequestMessage(method, relativePath);
+        ApplyAuth(request);
+
+        if (payload is not null)
+        {
+            request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        }
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
         var text = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException($"Storm API error {(int)response.StatusCode}: {text}");
         }
 
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var data = JsonSerializer.Deserialize<List<T>>(text, options);
-        return data ?? [];
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            using var empty = JsonDocument.Parse("{}");
+            return empty.RootElement.Clone();
+        }
+
+        using var doc = JsonDocument.Parse(text);
+        return doc.RootElement.Clone();
+    }
+
+    private void ApplyAuth(HttpRequestMessage request)
+    {
+        if (!string.IsNullOrWhiteSpace(_options.ApiToken))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("PrivateToken", _options.ApiToken);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_options.SessionToken))
+        {
+            request.Headers.Add("Cookie", $"session={_options.SessionToken}");
+            return;
+        }
+
+        throw new InvalidOperationException("STORM auth not configured. Set Storm:ApiToken or Storm:SessionToken.");
     }
 }

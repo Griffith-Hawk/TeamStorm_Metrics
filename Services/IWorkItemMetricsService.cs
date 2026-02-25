@@ -4,5 +4,8 @@ namespace TeamStorm.Metrics.Services;
 
 public interface IWorkItemMetricsService
 {
-    double CalculateFactMinutes(IReadOnlyList<HistoryEventDto> history, DateTimeOffset periodStart, DateTimeOffset periodEnd);
+    double CalculateInProgressMinutes(IReadOnlyList<HistoryEventDto> history);
+    double CalculateTestingMinutes(IReadOnlyList<HistoryEventDto> history);
+    double CalculateInAssessmentTestingMinutes(IReadOnlyList<HistoryEventDto> history);
+    IReadOnlyList<ReadyToTestPairDto> ComputeReadyToTestPairs(IReadOnlyList<HistoryEventDto> history);
 }

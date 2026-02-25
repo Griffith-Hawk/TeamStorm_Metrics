@@ -1,0 +1,95 @@
+@{
+  var workspaceId = (string?)ViewData["WorkspaceId"] ?? string.Empty;
+  var workspaceName = (string?)ViewData["WorkspaceName"] ?? "Project";
+  var workspaceKey = (string?)ViewData["WorkspaceKey"] ?? string.Empty;
+}
+<section>
+  <a href="/">← К workspace</a>
+  <h1>@workspaceName (@workspaceKey)</h1>
+  <p>ID: <code id="workspace-id">@workspaceId</code></p>
+
+  <div class="row">
+    <select id="folder"></select>
+    <select id="sprint"></select>
+    <button id="load">Загрузить метрики</button>
+  </div>
+
+  <div id="status"></div>
+  <table id="table" class="table">
+    <thead><tr><th>Key</th><th>Название</th><th>Статус</th><th>Plan (ч)</th><th>Fact (мин)</th><th>Fact QA (мин)</th><th>Handoff QA (мин)</th><th>История тестов</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<script>
+const wsId = document.getElementById('workspace-id').textContent.trim();
+const folderSel = document.getElementById('folder');
+const sprintSel = document.getElementById('sprint');
+const loadBtn = document.getElementById('load');
+const statusEl = document.getElementById('status');
+const tbody = document.querySelector('#table tbody');
+
+async function loadFolders() {
+  const res = await fetch(`/api/workspaces/${encodeURIComponent(wsId)}/folders`);
+  const data = await res.json();
+  const folders = data.items || data;
+  folderSel.innerHTML = (folders||[]).map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+}
+
+async function loadSprints() {
+  const fid = folderSel.value;
+  const res = await fetch(`/api/workspaces/${encodeURIComponent(wsId)}/sprints?folderId=${encodeURIComponent(fid)}`);
+  const data = await res.json();
+  const sprints = data.items || data;
+  sprintSel.innerHTML = `<option value="">Все спринты</option>` + (sprints||[]).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+}
+
+function readStatus(item){
+  return item.status?.name || item.statusName || item.state?.name || '-';
+}
+function readPlanHours(item){
+  const sec = item.originalEstimate ?? item.estimatedTime ?? item.estimate ?? 0;
+  return Math.round((sec/3600)*10)/10;
+}
+
+async function loadMetrics(){
+  const fid = folderSel.value;
+  const sprintId = sprintSel.value;
+  statusEl.textContent = 'Загрузка задач и расчёт метрик...';
+  let url = `/api/workspaces/${encodeURIComponent(wsId)}/folders/${encodeURIComponent(fid)}/workitems?maxItemsCount=100`;
+  if (sprintId) url += `&sprintId=${encodeURIComponent(sprintId)}`;
+  const wRes = await fetch(url);
+  const wData = await wRes.json();
+  const items = wData.items || wData;
+  const ids = (items||[]).map(x => x.id);
+
+  const mRes = await fetch(`/api/workspaces/${encodeURIComponent(wsId)}/workitems/fact`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ workitemIds: ids })
+  });
+  const metrics = await mRes.json();
+
+  tbody.innerHTML = (items||[]).map(item => {
+    const m = metrics[item.id] || {fact:0,factQA:0,handoffFact:0};
+    return `<tr>
+      <td>${item.key||''}</td><td>${item.name||''}</td><td>${readStatus(item)}</td><td>${readPlanHours(item)}</td>
+      <td>${m.fact}</td><td>${m.factQA}</td><td>${m.handoffFact}</td>
+      <td><button data-id="${item.id}" class="history">Показать</button></td>
+    </tr>`;
+  }).join('');
+  statusEl.textContent = `Загружено задач: ${(items||[]).length}`;
+}
+
+tbody.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.history');
+  if (!btn) return;
+  const wid = btn.dataset.id;
+  const res = await fetch(`/api/workspaces/${encodeURIComponent(wsId)}/workitems/${encodeURIComponent(wid)}/history/ready-to-test`);
+  const data = await res.json();
+  const txt = (data.pairs||[]).map(p => `Ready: ${p.readyAt||'-'} (${p.readyBy||'-'}) -> Taken: ${p.takenAt||'-'} (${p.takenBy||'-'}), lag=${p.lagHours??'-'}h, testing=${p.testingHours??'-'}h`).join('\n');
+  alert(txt || 'Нет данных');
+});
+
+folderSel.addEventListener('change', loadSprints);
+loadBtn.addEventListener('click', loadMetrics);
+(async () => { await loadFolders(); await loadSprints(); })();
+</script>

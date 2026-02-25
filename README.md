@@ -1,34 +1,41 @@
 # TeamStorm Metrics (.NET)
 
-Проект полностью мигрирован на **ASP.NET Core MVC (C#)**.
+Проект перенесён на **ASP.NET Core MVC (C#)** с сохранением основного функционала прошлого приложения:
+- выгрузка Workspace,
+- переход на отдельную страницу проекта,
+- выбор папки/спринта,
+- таблица задач,
+- расчёт метрик `Fact`, `Fact QA`, `Handoff QA`,
+- просмотр истории пары `ready to test -> testing`.
 
-## Архитектура
+## Структура
+- `Controllers/` — web/API контроллеры.
+- `Services/` — интеграция со Storm API и бизнес-логика метрик.
+- `Models/` — request/response модели.
+- `Views/` + `wwwroot/` — HTML/CSS/JS.
+- `Options/` — конфигурация токенов и base url.
 
-- `Controllers/` — MVC и API контроллеры.
-- `Services/` — доступ к Storm API и вычисление метрик (бизнес-логика).
-- `Models/` — DTO для данных Storm.
-- `Views/` + `wwwroot/` — Web UI (HTML + CSS + JS).
-- `Options/` — конфигурация внешнего API.
+## Конфигурация
+`appsettings.json`:
+```json
+"Storm": {
+  "BaseUrl": "https://storm.alabuga.space",
+  "ApiToken": "...",
+  "SessionToken": "..."
+}
+```
 
-## Быстрый старт
-
-1. Установить .NET SDK 8.0+
-2. Заполнить `appsettings.json` (секция `Storm`):
-   - `ApiToken` (рекомендуется)
-   - или `SessionToken`
-3. Запустить:
-
+## Запуск
 ```bash
 dotnet restore
 dotnet run
 ```
 
-## API
-
-- `GET /api/health`
+## Основные API
 - `GET /api/workspaces`
 - `GET /api/workspaces/{workspaceId}/folders`
+- `GET /api/workspaces/{workspaceId}/sprints?folderId=...`
 - `GET /api/workspaces/{workspaceId}/folders/{folderId}/workitems`
 - `POST /api/workspaces/{workspaceId}/workitems/fact`
-
-`fact` рассчитывается в C# сервисе по истории задач, учитывая рабочее время (08:00–17:00 МСК, Пн–Пт).
+- `GET /api/workspaces/{workspaceId}/workitems/{workitemId}/history/ready-to-test`
+- `PATCH|PUT /api/workspaces/{workspaceId}/workitems/{workitemId}`

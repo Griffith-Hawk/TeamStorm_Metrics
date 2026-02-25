@@ -1,25 +1,17 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace TeamStorm.Metrics.Models;
 
-public sealed class WorkspaceDto
+public sealed class FactRequest
 {
-    public string Id { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
+    public List<string> WorkitemIds { get; set; } = [];
 }
 
-public sealed class FolderDto
+public sealed class WorkItemUpdateRequest
 {
-    public string Id { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-}
-
-public sealed class WorkItemDto
-{
-    public string Id { get; set; } = string.Empty;
-    public string Key { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public string? Status { get; set; }
+    public double? OriginalEstimate { get; set; }
+    public double? EstimatedTime { get; set; }
 }
 
 public sealed class HistoryEventDto
@@ -27,11 +19,18 @@ public sealed class HistoryEventDto
     public string? Type { get; set; }
     public DateTimeOffset? Date { get; set; }
     public HistoryDataDto? Data { get; set; }
+    public JsonElement? User { get; set; }
+    public JsonElement? Author { get; set; }
+    public string? UserId { get; set; }
+    public string? AuthorId { get; set; }
 }
 
 public sealed class HistoryDataDto
 {
     public HistoryStatusDto? NewValue { get; set; }
+    public JsonElement? User { get; set; }
+    public JsonElement? Author { get; set; }
+    public string? UserId { get; set; }
 }
 
 public sealed class HistoryStatusDto
@@ -42,9 +41,12 @@ public sealed class HistoryStatusDto
     public string? Name { get; set; }
 }
 
-public sealed class FactRequest
+public sealed class ReadyToTestPairDto
 {
-    public string? PeriodStart { get; set; }
-    public string? PeriodEnd { get; set; }
-    public List<string> WorkItemIds { get; set; } = [];
+    public string? ReadyAt { get; set; }
+    public string? ReadyBy { get; set; }
+    public string? TakenAt { get; set; }
+    public string? TakenBy { get; set; }
+    public double? LagHours { get; set; }
+    public double? TestingHours { get; set; }
 }
