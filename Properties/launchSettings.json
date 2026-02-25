@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "TeamStorm.Metrics": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:54766;http://localhost:54767"
+    }
+  }
+}
