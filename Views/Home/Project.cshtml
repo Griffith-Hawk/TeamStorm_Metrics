@@ -1,0 +1,78 @@
+@{
+  var workspaceId = (string?)ViewData["WorkspaceId"] ?? string.Empty;
+  var workspaceName = (string?)ViewData["WorkspaceName"] ?? "Project";
+  var workspaceKey = (string?)ViewData["WorkspaceKey"] ?? string.Empty;
+}
+<section>
+  <a href="/">← К workspace</a>
+  <h1>@workspaceName (@workspaceKey)</h1>
+  <p>ID: <code id="workspace-id">@workspaceId</code></p>
+  <div id="status">Загрузка общей статистики проекта...</div>
+
+  <div class="cards" id="totals"></div>
+
+  <h2>Спринты проекта</h2>
+  <canvas id="velocityChart" height="110"></canvas>
+  <table class="table" id="sprints-table">
+    <thead>
+      <tr>
+        <th>Folder</th><th>Sprint</th><th>State</th><th>Capacity</th><th>Dev Velocity</th><th>QA Velocity</th><th>Analyst Velocity</th><th>TTL</th><th>Риски</th><th>Детали</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const wsId = document.getElementById('workspace-id').textContent.trim();
+const totalsEl = document.getElementById('totals');
+const statusEl = document.getElementById('status');
+const tbody = document.querySelector('#sprints-table tbody');
+
+function card(label, value){ return `<div class="stat"><div class="label">${label}</div><div class="value">${value}</div></div>`; }
+
+async function loadProjectAnalytics(){
+  const res = await fetch(`/api/workspaces/${encodeURIComponent(wsId)}/analytics?workspaceName=${encodeURIComponent('@workspaceName')}`);
+  const data = await res.json();
+
+  totalsEl.innerHTML = [
+    card('Total Capacity (h)', data.totalCapacityHours?.toFixed?.(1) ?? data.totalCapacityHours),
+    card('Dev Velocity (h)', data.totalDeveloperVelocityHours?.toFixed?.(1) ?? data.totalDeveloperVelocityHours),
+    card('QA Velocity (h)', data.totalQaVelocityHours?.toFixed?.(1) ?? data.totalQaVelocityHours),
+    card('Analyst Velocity (h)', data.totalAnalystVelocityHours?.toFixed?.(1) ?? data.totalAnalystVelocityHours),
+    card('TTL (h)', data.totalTtlHours?.toFixed?.(1) ?? data.totalTtlHours)
+  ].join('');
+
+  const sprints = data.sprints || [];
+  tbody.innerHTML = sprints.map(s => {
+    const risks = (s.risks||[]).join('<br>');
+    const link = `/projects/${encodeURIComponent(s.workspaceId)}/folders/${encodeURIComponent(s.folderId)}/sprints/${encodeURIComponent(s.sprintId)}?workspaceName=${encodeURIComponent('@workspaceName')}`;
+    return `<tr>
+      <td>${s.folderName}</td><td>${s.sprintName}</td><td>${s.sprintState}</td>
+      <td>${s.capacityHours}</td><td>${s.teamVelocityHours}</td><td>${s.teamQaVelocityHours}</td><td>${s.teamAnalystVelocityHours}</td><td>${s.teamTtlHours}</td>
+      <td>${risks}</td><td><a href="${link}">Открыть</a></td>
+    </tr>`;
+  }).join('');
+
+  const labels = sprints.map(s => s.sprintName);
+  const dev = sprints.map(s => s.teamVelocityHours);
+  const qa = sprints.map(s => s.teamQaVelocityHours);
+  const an = sprints.map(s => s.teamAnalystVelocityHours);
+
+  const ctx = document.getElementById('velocityChart');
+  new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [
+      { label:'Dev', data:dev, backgroundColor:'#60a5fa' },
+      { label:'QA', data:qa, backgroundColor:'#34d399' },
+      { label:'Analyst', data:an, backgroundColor:'#fbbf24' }
+    ]},
+    options: { responsive:true, plugins:{ legend:{ labels:{ color:'#cbd5e1' } } }, scales:{ x:{ ticks:{ color:'#94a3b8' } }, y:{ ticks:{ color:'#94a3b8' } } } }
+  });
+
+  statusEl.textContent = `Сформировано: ${new Date(data.generatedAt).toLocaleString()}`;
+}
+
+loadProjectAnalytics().catch(err => statusEl.textContent = `Ошибка: ${err}`);
+</script>

@@ -1,0 +1,31 @@
+<section>
+  <h1>TeamStorm Metrics</h1>
+  <p>Выберите workspace для перехода на страницу проекта с метриками.</p>
+  <input id="search" placeholder="Поиск workspace..." />
+  <div id="count"></div>
+  <div id="workspaces" class="grid"></div>
+</section>
+
+<script>
+(async function(){
+  const res = await fetch('/api/workspaces');
+  const data = await res.json();
+  const list = data.workspaces || [];
+  const container = document.getElementById('workspaces');
+  const count = document.getElementById('count');
+  const search = document.getElementById('search');
+
+  const render = () => {
+    const q = (search.value || '').toLowerCase().trim();
+    const filtered = !q ? list : list.filter(w => `${w.name||''} ${w.key||''}`.toLowerCase().includes(q));
+    count.textContent = `${filtered.length} из ${list.length}`;
+    container.innerHTML = filtered.map(w => {
+      const url = `/projects/${encodeURIComponent(w.workspaceId)}?name=${encodeURIComponent(w.name||'')}&key=${encodeURIComponent(w.key||'')}`;
+      return `<a class="card" href="${url}"><div class="key">${w.key||''}</div><div>${w.name||''}</div></a>`;
+    }).join('');
+  };
+
+  search.addEventListener('input', render);
+  render();
+})();
+</script>

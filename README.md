@@ -1,99 +1,47 @@
-# Иерархия задач релиза
+# TeamStorm Metrics (.NET)
 
-Веб-приложение для отображения иерархической структуры задач из JSON файла.
+ASP.NET Core MVC приложение для аналитики TeamStorm с расчётом:
+- **TTL** по задачам/участникам,
+- **Velocity** по ролям:
+  - Dev: `Selected -> Ready to Test`
+  - QA: `Ready to test -> Acceptance`
+  - Analyst: `Open -> Handoff`
+- **Capacity** (по оценкам задач),
+- рисков и рекомендаций для спринтов (активный / не запущен / завершён).
 
-## Структура проекта
+## Что есть в UI
+1. Главная страница — список workspace.
+2. Страница проекта — агрегированная статистика по всем спринтам проекта + графики.
+3. Страница спринта — детальная аналитика по каждому участнику (TTL/Velocity/Capacity), риски и рекомендации.
 
-- `example.json` - исходный JSON файл с данными задач
-- `index.html` - главная страница с иерархическим деревом задач
+## Безопасное кеширование
+- Аналитика кешируется в `App_Data/cache`.
+- Кеш хранится **в зашифрованном виде** (AES-GCM).
+- Ключ можно задать в `appsettings.json` как `Storm:CacheEncryptionKey` (base64 32-byte).
 
-## Функциональность
-
-### Отображение данных
-Для каждой задачи отображается:
-- **Ключ** (например, KS-801)
-- **Название**
-- **Тип** (Feature, Задача, Bug)
-- **Статус** (ACCEPTANCE, IN_PROGRESS и т.д.)
-- **Окружение** (из атрибутов)
-- **Ответственный** (assignee)
-- **O, M, P** (время из атрибутов)
-- **Estimate** (оценка времени)
-- **Spent** (затраченное время, если есть)
-- **Left** (оставшееся время, если есть)
-
-### Иерархия
-- Фичи верхнего уровня (level 1)
-- Подзадачи и задачи (level 2+)
-- Автоматическое построение дерева по `parentId`
-
-### Интерактивность
-- Раскрытие/сворачивание узлов дерева
-- По умолчанию раскрыт первый уровень
-- Клик по узлу или иконке для раскрытия/сворачивания
-
-### Статистика
-В верхней части страницы отображается:
-- Общее количество элементов
-- Количество фич
-- Количество задач
-- Количество багов
-
-## Деплой на Render (бесплатно)
-
-1. Зарегистрируйтесь на [render.com](https://render.com), привяжите GitHub.
-2. New → Web Service → выберите репозиторий `storm_stat`.
-3. Render подхватит `render.yaml`. Добавьте секреты в Dashboard → Environment:
-   - `STORM_SESSION_TOKEN` — cookie session из браузера Storm
-   - `STORM_API_TOKEN` — API-токен из профиля Storm
-4. Deploy. Приложение будет доступно по `https://storm-stat.onrender.com` (или ваш поддомен).
-
-**Важно:** на бесплатном тарифе сервис «засыпает» после 15 минут без обращений; первый запрос после паузы может занимать ~30 сек.
-
-## Запуск локально
-
-### Вариант 1: Node.js
-```bash
-npm install
-cp .env.example .env   # и заполните токены
-npm start
-```
-Откройте http://localhost:3000
-
-
-## Формат времени
-
-Время отображается в формате:
-- Часы и минуты (например, "8ч 30м")
-- Только минуты для значений меньше часа (например, "45м")
-- "—" для пустых значений
-
-Все значения времени в JSON хранятся в секундах и автоматически конвертируются для отображения.
-
-## Структура данных
-
-Приложение ожидает JSON файл со следующей структурой:
+## Конфигурация
 ```json
-{
-  "items": [
-    {
-      "workitemId": "...",
-      "parentId": "...",
-      "key": "KS-801",
-      "name": "Название задачи",
-      "workitemType": { "name": "Feature" },
-      "status": { "statusName": "ACCEPTANCE" },
-      "assignee": { "displayName": "Имя" },
-      "attributes": [
-        { "name": "O", "type": "TimeDuration", "data": { "value": 28800 } },
-        { "name": "М", "type": "TimeDuration", "data": { "value": 14400 } },
-        { "name": "P", "type": "TimeDuration", "data": { "value": 7200 } },
-        { "name": "Окружение", "type": "UniSelect", "data": { "value": { "name": "РФ" } } }
-      ],
-      "estimatedTime": 28800,
-      "spentTime": 14400,
-      "leftTime": 14400
-    }
-  ]
+"Storm": {
+  "BaseUrl": "https://storm.alabuga.space",
+  "ApiToken": "...",
+  "SessionToken": "...",
+  "CacheEncryptionKey": "<base64-32-byte-key-optional>"
 }
 ```
+
+## Запуск
+```bash
+dotnet restore
+dotnet run
+```
+
+## API
+- `GET /api/workspaces`
+- `GET /api/workspaces/{workspaceId}/analytics`
+- `GET /api/workspaces/{workspaceId}/folders/{folderId}/sprints/{sprintId}/analytics`
+- `GET /api/workspaces/{workspaceId}/folders`
+- `GET /api/workspaces/{workspaceId}/sprints`
+- `GET /api/workspaces/{workspaceId}/folders/{folderId}/workitems`
+- `POST /api/workspaces/{workspaceId}/workitems/fact`
+- `GET /api/workspaces/{workspaceId}/workitems/{workitemId}/history/ready-to-test`
+- `PATCH|PUT /api/workspaces/{workspaceId}/workitems/{workitemId}`

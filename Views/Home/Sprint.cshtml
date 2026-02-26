@@ -1,0 +1,40 @@
+@{
+  var workspaceId = (string?)ViewData["WorkspaceId"] ?? string.Empty;
+  var folderId = (string?)ViewData["FolderId"] ?? string.Empty;
+  var sprintId = (string?)ViewData["SprintId"] ?? string.Empty;
+  var workspaceName = (string?)ViewData["WorkspaceName"] ?? workspaceId;
+}
+<section>
+  <a href="/projects/@workspaceId?name=@workspaceName">← Назад к проекту</a>
+  <h1>Детали спринта</h1>
+  <p>Workspace: <code id="ws">@workspaceId</code> | Folder: <code id="fid">@folderId</code> | Sprint: <code id="sid">@sprintId</code></p>
+  <div id="state"></div>
+
+  <h2>Команда (TTL / Velocity / Capacity)</h2>
+  <table class="table" id="people">
+    <thead><tr><th>Участник</th><th>Tasks</th><th>Capacity(h)</th><th>TTL(h)</th><th>Dev Vel(h)</th><th>QA Vel(h)</th><th>Analyst Vel(h)</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <h3>Риски</h3>
+  <ul id="risks"></ul>
+  <h3>Рекомендации</h3>
+  <ul id="recs"></ul>
+</section>
+
+<script>
+(async function(){
+  const ws = document.getElementById('ws').textContent.trim();
+  const fid = document.getElementById('fid').textContent.trim();
+  const sid = document.getElementById('sid').textContent.trim();
+  const res = await fetch(`/api/workspaces/${encodeURIComponent(ws)}/folders/${encodeURIComponent(fid)}/sprints/${encodeURIComponent(sid)}/analytics`);
+  const data = await res.json();
+
+  document.getElementById('state').textContent = `Sprint: ${data.sprintName} (${data.sprintState})`;
+  document.querySelector('#people tbody').innerHTML = (data.byPerson||[]).map(p => `<tr>
+    <td>${p.person}</td><td>${p.tasksCount}</td><td>${p.capacityHours}</td><td>${p.ttlHours}</td><td>${p.developerVelocityHours}</td><td>${p.qaVelocityHours}</td><td>${p.analystVelocityHours}</td>
+  </tr>`).join('');
+  document.getElementById('risks').innerHTML = (data.risks||[]).map(x=>`<li>${x}</li>`).join('');
+  document.getElementById('recs').innerHTML = (data.recommendations||[]).map(x=>`<li>${x}</li>`).join('');
+})();
+</script>
