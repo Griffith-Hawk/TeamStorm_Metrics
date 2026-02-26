@@ -6,6 +6,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<StormOptions>(builder.Configuration.GetSection(StormOptions.SectionName));
 builder.Services.AddHttpClient<IStormApiClient, StormApiClient>();
 builder.Services.AddScoped<IWorkItemMetricsService, WorkItemMetricsService>();
+builder.Services.AddScoped<IEncryptedCacheService, EncryptedCacheService>();
+builder.Services.AddScoped<ISprintAnalyticsService, SprintAnalyticsService>();
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();

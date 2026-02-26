@@ -7,4 +7,5 @@ public sealed class StormOptions
     public string BaseUrl { get; set; } = "https://storm.alabuga.space";
     public string? ApiToken { get; set; }
     public string? SessionToken { get; set; }
+    public string? CacheEncryptionKey { get; set; }
 }

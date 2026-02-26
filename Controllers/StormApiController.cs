@@ -11,11 +11,13 @@ public sealed class StormApiController : ControllerBase
 {
     private readonly IStormApiClient _stormApi;
     private readonly IWorkItemMetricsService _metrics;
+    private readonly ISprintAnalyticsService _analytics;
 
-    public StormApiController(IStormApiClient stormApi, IWorkItemMetricsService metrics)
+    public StormApiController(IStormApiClient stormApi, IWorkItemMetricsService metrics, ISprintAnalyticsService analytics)
     {
         _stormApi = stormApi;
         _metrics = metrics;
+        _analytics = analytics;
     }
 
     [HttpGet("health")]
@@ -24,6 +26,14 @@ public sealed class StormApiController : ControllerBase
     [HttpGet("workspaces")]
     public async Task<IActionResult> Workspaces(CancellationToken ct)
         => Ok(await _stormApi.PostAsync("admin/api/v1/workspaces/get", new { }, ct));
+
+    [HttpGet("workspaces/{workspaceId}/analytics")]
+    public async Task<IActionResult> ProjectAnalytics(string workspaceId, [FromQuery] string? workspaceName, CancellationToken ct)
+        => Ok(await _analytics.GetProjectAnalyticsAsync(workspaceId, workspaceName, ct));
+
+    [HttpGet("workspaces/{workspaceId}/folders/{folderId}/sprints/{sprintId}/analytics")]
+    public async Task<IActionResult> SprintAnalytics(string workspaceId, string folderId, string sprintId, CancellationToken ct)
+        => Ok(await _analytics.GetSprintAnalyticsAsync(workspaceId, folderId, sprintId, ct));
 
     [HttpGet("workspaces/{workspaceId}/folders")]
     public async Task<IActionResult> Folders(string workspaceId, [FromQuery] string? name, [FromQuery] string? parentId, [FromQuery] string? maxItemsCount, CancellationToken ct)

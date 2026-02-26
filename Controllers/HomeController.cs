@@ -14,4 +14,14 @@ public sealed class HomeController : Controller
         ViewData["WorkspaceKey"] = key ?? string.Empty;
         return View();
     }
+
+    [HttpGet("projects/{workspaceId}/folders/{folderId}/sprints/{sprintId}")]
+    public IActionResult Sprint(string workspaceId, string folderId, string sprintId, [FromQuery] string? workspaceName = null)
+    {
+        ViewData["WorkspaceId"] = workspaceId;
+        ViewData["FolderId"] = folderId;
+        ViewData["SprintId"] = sprintId;
+        ViewData["WorkspaceName"] = workspaceName ?? workspaceId;
+        return View();
+    }
 }
